@@ -110,16 +110,24 @@ def start_session(sites, duration):
                 # subprocess.run(
                 #     at_command, shell=True, check=True, capture_output=True, text=True
                 # )
-
-                at_command = (
-                    'echo "echo did this work? > /tmp/test.txt" | at now + 1 minute'
-                )
-                subprocess.run(
+                # at_command = f'echo "echo hey baby :) > /tmp/test.txt" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
+                # at_command = f'echo "echo multi-line text here > /tmp/test.txt" | at now + 1 minute'
+                at_command = f'echo "echo multi-line text hereeeee > /tmp/test.txt" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
+                print(at_command)
+                # Q: look into why the output goes to std.err and not std.not
+                completed_proc = subprocess.run(
                     at_command,
+                    # Specifies command to run in shell and must be formatted exactly as it would be written if copied into your shell
                     shell=True,
+                    # Throws subprocess.CalledProcessError if something goes wrong
                     check=True,
+                    # Lets up capture output?
+                    capture_output=True,
+                    #
                     text=True,
                 )
+                print("completed proc stdout is", completed_proc.stdout, completed_proc)
+                # TODO: Fix this to print it in a more readable format.
                 print(
                     f"Your study session has started! It will end at {end_time.strftime(TIME_FORMAT)}."
                 )
