@@ -1,16 +1,31 @@
 import argparse
+import os
 import re
+import signal
 import subprocess
-from typing import List
+import sys
+from datetime import datetime, timedelta
 
 HOSTS_PATH = "/etc/hosts"
 HEADER_BLOCK = "# Added by work script\n"
 FOOTER_BLOCK = "End of section\n"
 EM_DASH = "\u2014"
 SITE_PATTERN = r"(?:www\.)?([a-zA-Z0-9-]+)\.com"
+SESSION_INFO_FILE = "/tmp/site_blocker_session_info"
+TIME_FORMAT = "%m/%d/%y, %H:%M:%S"
+POST_SESSION_RECAP_QS = [
+    "What did you learn?",
+    "What went well?",
+    "What did not go well?",
+]
 
 
-def remove_spaces(arr: List) -> List:
+def reset_dns(success_str):
+    subprocess.run(["sudo", "killall", "-HUP", "mDNSResponder"])
+    print(success_str)
+
+
+def remove_spaces(arr):
     return list(filter(bool, arr))
 
 
@@ -19,10 +34,7 @@ def get_site_name(line):
 
 
 def already_a_session():
-    with open(HOSTS_PATH, "r") as hosts_file:
-        for line in hosts_file:
-            if line == HEADER_BLOCK:
-                return True
+    return os.path.exists(SESSION_INFO_FILE)
 
 
 def block_sites(sites, duration):
@@ -40,13 +52,13 @@ def block_sites(sites, duration):
             hosts_file.write("\n".join(entries))
             hosts_file.write("\n")
             hosts_file.write(FOOTER_BLOCK)
-        subprocess.run(["sudo", "killall", "-HUP", "mDNSResponder"])
-        print(
+        reset_dns(
             f"Blocked sites {EM_DASH} {", ".join(sites)} {EM_DASH} for {duration} minutes."
         )
+        return True
     else:
         print("Error: Already a current study session in progress.")
-        exit(1)
+        return False
 
 
 def remove_sites():
@@ -71,7 +83,59 @@ def remove_sites():
                         site_name = m.group(1)
                         blocked_sites.add(site_name)
 
-    print(f"Removed blocked sites: {", ".join(blocked_sites)}.")
+    reset_dns(f"Removed blocked sites: {", ".join(blocked_sites)}.")
+
+
+def prompt_user():
+    print("\nStudy session ended, answer these questions to recap how it went")
+    # for q in POST_SESSION_RECAP_QS:
+    #     x = input(q)
+
+
+def start_session(sites, duration):
+    if block_sites(sites, duration):
+        try:
+            with open(SESSION_INFO_FILE, "w") as session_file:
+                start_time = datetime.now()
+                # TODO: change back to minutes
+                end_time = start_time + timedelta(seconds=duration)
+                session_file.write(
+                    f"study session started at {start_time.strftime(TIME_FORMAT)}, session to end at {end_time.strftime(TIME_FORMAT)}"
+                )
+                removal_script = os.path.abspath(__file__)
+                # at_command = f'echo "hey there" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
+                # at_command = f"echo ?? | tee /tmp/test.txt"
+                # print(at_command)
+                # # Q: what does shell=True do and all the other commands?
+                # subprocess.run(
+                #     at_command, shell=True, check=True, capture_output=True, text=True
+                # )
+
+                at_command = (
+                    'echo "echo did this work? > /tmp/test.txt" | at now + 1 minute'
+                )
+                subprocess.run(
+                    at_command,
+                    shell=True,
+                    check=True,
+                    text=True,
+                )
+                print(
+                    f"Your study session has started! It will end at {end_time.strftime(TIME_FORMAT)}."
+                )
+        except subprocess.CalledProcessError as e:
+            print(f"Command failed with exit code {e.returncode}")
+            print("Command output:", e.output)
+            print("Command error:", e.stderr)
+        except Exception as e:
+            print("Something went wrong:", e)
+
+
+def end_session():
+    remove_sites()
+    os.remove(SESSION_INFO_FILE)
+    prompt_user()
+    sys.exit(0)
 
 
 def main():
@@ -79,23 +143,33 @@ def main():
         description="Block websites during this study session of a specified time period."
     )
     parser.add_argument(
-        "blocked_sites",
-        help="Comma-separated list of site names (eg, x, instgram, etc.) to block",
+        "action",
+        choices=["start", "info", "end"],
+        help="Action to perform: 'start' a new session, get 'info' about the current session, or 'end' the current session.",
     )
+    # Q: assume that the --sites makes it optional?
     parser.add_argument(
-        "block_time",
-        type=int,
-        help="Time to block sites (in minutes)",
+        "--sites",
+        help="Comma-separated list of site names (eg, x, instagram, etc.) to block.",
     )
-
+    # Q: assume that the --sites makes it optional?
+    parser.add_argument(
+        "--duration",
+        type=int,
+        help="Time to block sites (in minutes).",
+    )
     args = parser.parse_args()
 
-    sites, block_duration = args.blocked_sites.split(","), args.block_time
-
-    block_sites(sites, block_duration)
-
-    # TODO: when the time is up, the remove the sites
-    remove_sites()
+    if args.action == "start":
+        if not args.sites or not args.duration:
+            print("Error: Both --sites and --duration are required for 'start' action.")
+            sys.exit(1)
+        sites = args.sites.split(",")
+        start_session(sites, args.duration)
+    elif args.action == "info":
+        print("*** need to implement ***")
+    elif args.action == "end":
+        end_session()
 
 
 if __name__ == "__main__":
