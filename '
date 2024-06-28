@@ -53,19 +53,21 @@ def already_a_session():
 def block_sites(sites):
     if not already_a_session():
         entries = []
-        with open(HOSTS_PATH, "a") as hosts_file:
-            for site in sites:
-                entries.extend(
-                    [
-                        f"0.0.0.0 {site}.com",
-                        f"0.0.0.0 www.{site}.com",
-                    ]
-                )
-            hosts_file.write(HEADER_BLOCK)
-            hosts_file.write("\n".join(entries))
-            hosts_file.write("\n")
-            hosts_file.write(FOOTER_BLOCK)
-        return reset_dns(f"Blocked the following sites: {", ".join(sites)}.")
+        if sites[0] != "":
+            with open(HOSTS_PATH, "a") as hosts_file:
+                for site in sites:
+                    entries.extend(
+                        [
+                            f"0.0.0.0 {site}.com",
+                            f"0.0.0.0 www.{site}.com",
+                        ]
+                    )
+                hosts_file.write(HEADER_BLOCK)
+                hosts_file.write("\n".join(entries))
+                hosts_file.write("\n")
+                hosts_file.write(FOOTER_BLOCK)
+            return reset_dns(f"Blocked the following sites: {", ".join(sites)}.")
+        return "No sites entered to block."
     else:
         print("Error: Already a current study session in progress.")
         return False
@@ -96,7 +98,7 @@ def remove_sites():
     reset_dns(f"\nRemoved blocked sites: {", ".join(blocked_sites)}.")
 
 
-def prompt_user():
+def prompt_user(start_time):
     if not os.path.exists(NOTES_DIR):
         os.makedirs(NOTES_DIR)
 
@@ -108,9 +110,7 @@ def prompt_user():
         data = json.load(tracker_file)
         session_number = data["session_number"]
 
-    session_end_str = (
-        "Study session ended, answer these questions to recap how it went!"
-    )
+    session_end_str = "Work session ended, answer these questions to recap how it went!"
     # print("\n")
     print_underline(f"{session_end_str}", with_str=False)
     print_underline(session_end_str)
@@ -123,9 +123,11 @@ def prompt_user():
 
     note_file_path = os.path.join(NOTES_DIR, f"session_{session_number:02}.md")
     with open(note_file_path, "w") as note_file:
-        note_file.write(
-            f"**Session {session_number} - {datetime.now().strftime(TIME_FORMAT)}**\n\n"
-        )
+        session_start_time = start_time
+        session_end_time = datetime.now()
+        session_duration_str = format_timedelta(session_end_time - session_start_time)
+        note_file.write(f"**Session {session_number} - {session_duration_str}**\n\n")
+
         for q, a in answers.items():
             note_file.write(f"**{q}**\n{a}\n\n")
 
@@ -134,12 +136,13 @@ def prompt_user():
         json.dump(data, tracker_file)
 
     subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
+    print(f"⭐️ Congrats on working for {session_duration_str} ⭐️")
     print(
         f"Your answers have been saved to {note_file_path}. The file path has also been copied to your clipboard!"
     )
 
 
-def start_session(sites, duration):
+def start_session(sites, duration, continuous):
     if block_str := block_sites(sites):
         start_time = datetime.now()
         end_time = start_time + timedelta(minutes=duration)
@@ -150,7 +153,7 @@ def start_session(sites, duration):
 
         with open(SESSION_INFO_FILE, "w") as session_file:
             session_file.write(
-                f"Deep work session {session_number} started at {start_time.strftime(TIME_FORMAT)}, session to end at {end_time.strftime(TIME_FORMAT)}\n"
+                f"Session number {session_number}\nStart time:{start_time.strftime(TIME_FORMAT)}\nEnd time:{end_time.strftime(TIME_FORMAT)}\n"
             )
             session_file.write("\n".join(sites))
 
@@ -167,7 +170,11 @@ def start_session(sites, duration):
         print_underline(underline_str, with_str=False)
 
         try:
-            time.sleep(duration * 60)
+            if continuous:
+                while True:
+                    time.sleep(1)
+            else:
+                time.sleep(duration * 60)
         except KeyboardInterrupt:
             confirm_end_session()
         finally:
@@ -175,11 +182,33 @@ def start_session(sites, duration):
                 end_session()
 
 
+def remove_old_info_file_and_get_start_time():
+    start_time = None
+    if os.path.exists(SESSION_INFO_FILE):
+        with open(SESSION_INFO_FILE, "r") as f:
+            for line in f:
+                if line.startswith("Start time:"):
+                    start_time_str = line.split("Start time:")[1].strip()
+                    start_time = datetime.strptime(start_time_str, TIME_FORMAT)
+                    break
+        os.remove(SESSION_INFO_FILE)
+    return start_time
+
+
 def end_session():
     remove_sites()
+
+    start_time = None
     if os.path.exists(SESSION_INFO_FILE):
-        os.remove(SESSION_INFO_FILE)
-    prompt_user()
+        # save the old start time to get full duration
+        start_time = remove_old_info_file_and_get_start_time()
+
+    if start_time:
+        prompt_user(start_time)
+    else:
+        print("Error parsing the session info file.")
+        sys.exit(1)
+
     sys.exit(0)
 
 
@@ -217,6 +246,9 @@ def format_timedelta(td):
         return f"{int(minutes)} minutes"
 
 
+# Q: assume that the --sites makes it optional?
+
+
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -226,32 +258,44 @@ def main():
     )
     parser.add_argument(
         "action",
-        choices=["start", "info", "end"],
+        choices=["start", "end"],
         help="Action to perform: 'start' a new session, get 'info' about the current session, or 'end' the current session.",
     )
-    # Q: assume that the --sites makes it optional?
     parser.add_argument(
         "--sites",
         help="Comma-separated list of site names (eg, x, instagram, etc.) to block.",
+        default="",
     )
-    # Q: assume that the --sites makes it optional?
     parser.add_argument(
         "--duration",
         type=int,
         help="Time to block sites (in minutes).",
+        default=0,
+    )
+    parser.add_argument(
+        "--continuous",
+        type=bool,
+        help="Instead of entering a duration, the script will continue until you explicitly end it.",
+        default=False,
     )
     args = parser.parse_args()
 
     if args.action == "start":
-        if not args.sites or not args.duration:
-            print("Error: Both --sites and --duration are required for 'start' action.")
+        if not args.duration and not args.continuous:
+            print(
+                "Error: Either--duration or --continuous is required for 'start' action."
+            )
             sys.exit(1)
         sites = args.sites.split(",")
-        start_session(sites, args.duration)
-    elif args.action == "info":
-        print("*** need to implement ***")
+        start_session(
+            sites,
+            args.duration,
+            args.continuous,
+        )
     elif args.action == "end":
         end_session()
+    else:
+        print("Please enter a valid action: start, end.")
 
 
 if __name__ == "__main__":
