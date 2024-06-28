@@ -16,14 +16,18 @@ SITE_PATTERN = r"(?:www\.)?([a-zA-Z0-9-]+)\.com"
 SESSION_INFO_FILE = "/tmp/site_blocker_session_info"
 TEST_FILE = "/tmp/exit_ran"
 TIME_FORMAT = "%m/%d/%y, %H:%M:%S"
+NOTES_DIR = "session_notes"
+SESSION_TRACKER_FILE = "session_tracker.json"
+NO_SITES_STR = "No sites entered to block."
+DEFAULT_SITES_FILE = "default_sites.txt"
+COLLECTED_SESSIONS_DIR = "collected_sessions"
+
+# UPDATE THIS DEPENDING ON THE QUESTIONS YOU WANT TO ANSWER
 POST_SESSION_RECAP_QS = [
     "1) What did you learn / work on?",
     "2) What went well?",
     "3) What didn't go well?",
 ]
-NOTES_DIR = "session_notes"
-SESSION_TRACKER_FILE = "session_tracker.json"
-NO_SITES_STR = "No sites entered to block."
 
 end_session_requested = False
 
@@ -51,10 +55,23 @@ def already_a_session():
     return os.path.exists(SESSION_INFO_FILE)
 
 
-def block_sites(sites):
+def read_default_sites():
+    if os.path.exists(DEFAULT_SITES_FILE):
+        with open(DEFAULT_SITES_FILE, "r") as f:
+            return [site.strip() for site in f.readlines() if site.strip()]
+    return [""]
+
+
+def block_sites(sites, all_sites=False):
     if not already_a_session():
-        entries = []
+        if all_sites:
+            return "Allowing all sites."
+
+        if sites[0] == "":
+            sites = read_default_sites()
+
         if sites[0] != "":
+            entries = []
             with open(HOSTS_PATH, "a") as hosts_file:
                 for site in sites:
                     entries.extend(
@@ -111,6 +128,10 @@ def get_multi_line_input(prompt, divider):
     return "\n".join(lines)
 
 
+# If the first time, ask about the divider, and let them know they can change with the line-starter arg the next time they run
+# the script...
+
+
 def prompt_user(start_time):
     if not os.path.exists(NOTES_DIR):
         os.makedirs(NOTES_DIR)
@@ -128,11 +149,6 @@ def prompt_user(start_time):
     print_underline(session_end_str)
 
     answers = {}
-
-    # for q in POST_SESSION_RECAP_QS:
-    #     answer = input(f"{q}\n")
-    #     answers[q] = answer
-    #     print("\n")
 
     divider = input(
         "Choose your preferred line starter (\u2022, '>', '-'). Press Enter for default '\u2022' :\n"
@@ -171,8 +187,8 @@ def prompt_user(start_time):
     )
 
 
-def start_session(sites, duration, continuous):
-    if block_str := block_sites(sites):
+def start_session(sites, duration, continuous, all_sites):
+    if block_str := block_sites(sites, all_sites):
         start_time = datetime.now()
         end_time = start_time + timedelta(minutes=duration)
 
@@ -188,7 +204,7 @@ def start_session(sites, duration, continuous):
             if block_str != NO_SITES_STR:
                 session_file.write("\n".join(sites))
 
-        session_started_str = f"Work session started "
+        session_started_str = f"Work session {session_number} started "
         if continuous:
             session_started_str += (
                 "in continuous mode. It will run until you stop the script."
@@ -284,6 +300,29 @@ def format_timedelta(td):
         return f"{int(minutes)} minutes"
 
 
+def collect_notes(start_session, end_session):
+    if not os.path.exists(COLLECTED_SESSIONS_DIR):
+        os.makedirs(COLLECTED_SESSIONS_DIR)
+
+    combined_content = {}
+    session_durations = []
+
+    for session_num in range(start_session, end_session + 1):
+        filename = f"session_{session_num:02}.md"
+        filepath = os.path.join(NOTES_DIR, filename)
+
+        if not os.path.exists(filepath):
+            print(
+                f"Warning: Session {session_num} not found in the {NOTES_DIR} directory. Skipping."
+            )
+            continue
+
+        with open(filepath, "r") as f:
+            content = f.read()
+
+         tn
+
+
 # Q: assume that the --sites makes it optional?
 
 
@@ -296,8 +335,8 @@ def main():
     )
     parser.add_argument(
         "action",
-        choices=["start", "end"],
-        help="Action to perform: 'start' a new session, get 'info' about the current session, or 'end' the current session.",
+        choices=["start", "end", "collect"],
+        help="Actions to perform: 'start' a new session, 'end' the current session, or 'collect' to group multiple sessions into one note.",
     )
     parser.add_argument(
         "--sites",
@@ -316,6 +355,22 @@ def main():
         help="Instead of entering a duration, the script will continue until you explicitly end it.",
         default=False,
     )
+    parser.add_argument(
+        "--all-sites",
+        type=bool,
+        dest="all_sites",
+        help="If true, will not block any sites regardless of your default_sites.txt or the arg(s) passed to --sites parameter.",
+        default=False,
+    )
+    parser.add_argument(
+        "--collect-from",
+        dest="collect_from",
+        type=int,
+    )
+    parser.add_argument(
+        "--to",
+        type=int,
+    )
     args = parser.parse_args()
 
     if args.action == "start":
@@ -324,14 +379,21 @@ def main():
                 "Error: Either--duration or --continuous is required for 'start' action."
             )
             sys.exit(1)
-        sites = args.sites.split(",")
+        sites = [""] if args.all_sites else args.sites.split(",")
         start_session(
             sites,
             args.duration,
             args.continuous,
+            args.all_sites,
         )
     elif args.action == "end":
         end_session()
+    elif args.actions == "collect":
+        if not args.collect_from and not args.to:
+            print(
+                "Error: Must pass which session notes to collect into one daily note."
+            )
+        collect_notes(args.collect_from, args.to)
     else:
         print("Please enter a valid action: start, end.")
 

@@ -1,0 +1,5 @@
+# Enter the sites here that you want to block while working.
+youtube
+x
+facebook
+instagram
