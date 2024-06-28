@@ -1,9 +1,11 @@
 import argparse
+import json
 import os
 import re
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta
 
 HOSTS_PATH = "/etc/hosts"
@@ -12,17 +14,28 @@ FOOTER_BLOCK = "End of section\n"
 EM_DASH = "\u2014"
 SITE_PATTERN = r"(?:www\.)?([a-zA-Z0-9-]+)\.com"
 SESSION_INFO_FILE = "/tmp/site_blocker_session_info"
+TEST_FILE = "/tmp/exit_ran"
 TIME_FORMAT = "%m/%d/%y, %H:%M:%S"
 POST_SESSION_RECAP_QS = [
-    "What did you learn?",
-    "What went well?",
-    "What did not go well?",
+    "1) What did you learn?",
+    "2) What went well?",
+    "3) What did not go well?",
 ]
+NOTES_DIR = "session_notes"
+SESSION_TRACKER_FILE = "session_tracker.json"
+
+end_session_requested = False
 
 
 def reset_dns(success_str):
     subprocess.run(["sudo", "killall", "-HUP", "mDNSResponder"])
-    print(success_str)
+    return success_str
+
+
+def print_underline(s, with_str=True):
+    if with_str:
+        print(s)
+    print("-" * len(s))
 
 
 def remove_spaces(arr):
@@ -37,7 +50,7 @@ def already_a_session():
     return os.path.exists(SESSION_INFO_FILE)
 
 
-def block_sites(sites, duration):
+def block_sites(sites):
     if not already_a_session():
         entries = []
         with open(HOSTS_PATH, "a") as hosts_file:
@@ -52,10 +65,7 @@ def block_sites(sites, duration):
             hosts_file.write("\n".join(entries))
             hosts_file.write("\n")
             hosts_file.write(FOOTER_BLOCK)
-        reset_dns(
-            f"Blocked sites {EM_DASH} {", ".join(sites)} {EM_DASH} for {duration} minutes."
-        )
-        return True
+        return reset_dns(f"Blocked the following sites: {", ".join(sites)}.")
     else:
         print("Error: Already a current study session in progress.")
         return False
@@ -83,70 +93,121 @@ def remove_sites():
                         site_name = m.group(1)
                         blocked_sites.add(site_name)
 
-    reset_dns(f"Removed blocked sites: {", ".join(blocked_sites)}.")
+    reset_dns(f"\nRemoved blocked sites: {", ".join(blocked_sites)}.")
 
 
 def prompt_user():
-    print("\nStudy session ended, answer these questions to recap how it went")
-    # for q in POST_SESSION_RECAP_QS:
-    #     x = input(q)
+    if not os.path.exists(NOTES_DIR):
+        os.makedirs(NOTES_DIR)
+
+    if not os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "w") as tracker_file:
+            json.dump({"session_number": 1}, tracker_file)
+
+    with open(SESSION_TRACKER_FILE, "r") as tracker_file:
+        data = json.load(tracker_file)
+        session_number = data["session_number"]
+
+    session_end_str = (
+        "Study session ended, answer these questions to recap how it went!"
+    )
+    print("\n")
+    print_underline(f"{session_end_str}", with_str=False)
+    print_underline(session_end_str)
+
+    answers = {}
+    for q in POST_SESSION_RECAP_QS:
+        answer = input(f"{q}\n")
+        answers[q] = answer
+        print("\n")
+
+    note_file_path = os.path.join(NOTES_DIR, f"session_{session_number:02}.md")
+    with open(note_file_path, "w") as note_file:
+        note_file.write(
+            f"**Session {session_number} - {datetime.now().strftime(TIME_FORMAT)}**\n\n"
+        )
+        for q, a in answers.items():
+            note_file.write(f"**{q}**\n{a}\n\n")
+
+    data["session_number"] += 1
+    with open(SESSION_TRACKER_FILE, "w") as tracker_file:
+        json.dump(data, tracker_file)
+
+    subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
+    print(
+        f"\nThanks!\nYour answers have been saved to {note_file_path}. The file path has also been copied to your clipboard!"
+    )
 
 
 def start_session(sites, duration):
-    if block_sites(sites, duration):
+    if block_str := block_sites(sites):
+        start_time = datetime.now()
+        end_time = start_time + timedelta(minutes=duration)
+        # TODO: PRINT OUT THE SESSION #!
+        with open(SESSION_INFO_FILE, "w") as session_file:
+            session_file.write(
+                f"Study session started at {start_time.strftime(TIME_FORMAT)}, session to end at {end_time.strftime(TIME_FORMAT)}\n"
+            )
+            session_file.write("\n".join(sites))
+
+        session_started_str = f"Study session started for {duration} minutes."
+        underline_str = (
+            session_started_str
+            if len(session_started_str) > len(block_str)
+            else block_str
+        )
+
+        print_underline(underline_str, with_str=False)
+        print(session_started_str)
+        print(block_str)
+        print_underline(underline_str, with_str=False)
+
         try:
-            with open(SESSION_INFO_FILE, "w") as session_file:
-                start_time = datetime.now()
-                # TODO: change back to minutes
-                end_time = start_time + timedelta(seconds=duration)
-                session_file.write(
-                    f"study session started at {start_time.strftime(TIME_FORMAT)}, session to end at {end_time.strftime(TIME_FORMAT)}"
-                )
-                removal_script = os.path.abspath(__file__)
-                # at_command = f'echo "hey there" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
-                # at_command = f"echo ?? | tee /tmp/test.txt"
-                # print(at_command)
-                # # Q: what does shell=True do and all the other commands?
-                # subprocess.run(
-                #     at_command, shell=True, check=True, capture_output=True, text=True
-                # )
-                # at_command = f'echo "echo hey baby :) > /tmp/test.txt" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
-                # at_command = f'echo "echo multi-line text here > /tmp/test.txt" | at now + 1 minute'
-                at_command = f'echo "echo multi-line text hereeeee > /tmp/test.txt" | at {end_time.strftime("%H:%M")} {end_time.strftime("%m%d%y")}'
-                print(at_command)
-                # Q: look into why the output goes to std.err and not std.not
-                completed_proc = subprocess.run(
-                    at_command,
-                    # Specifies command to run in shell and must be formatted exactly as it would be written if copied into your shell
-                    shell=True,
-                    # Throws subprocess.CalledProcessError if something goes wrong
-                    check=True,
-                    # Lets up capture output?
-                    capture_output=True,
-                    #
-                    text=True,
-                )
-                print("completed proc stdout is", completed_proc.stdout, completed_proc)
-                # TODO: Fix this to print it in a more readable format.
-                print(
-                    f"Your study session has started! It will end at {end_time.strftime(TIME_FORMAT)}."
-                )
-        except subprocess.CalledProcessError as e:
-            print(f"Command failed with exit code {e.returncode}")
-            print("Command output:", e.output)
-            print("Command error:", e.stderr)
-        except Exception as e:
-            print("Something went wrong:", e)
+            time.sleep(duration * 60)
+        except KeyboardInterrupt:
+            confirm_end_session()
+        finally:
+            if not end_session_requested:
+                end_session()
 
 
 def end_session():
     remove_sites()
-    os.remove(SESSION_INFO_FILE)
+    if os.path.exists(SESSION_INFO_FILE):
+        os.remove(SESSION_INFO_FILE)
     prompt_user()
     sys.exit(0)
 
 
+def confirm_end_session():
+    global end_session_requested
+    end_session_requested = True
+    valid_input = False
+
+    while not valid_input:
+        confirm = (
+            input("\nAre you sure you want to end the study session? (y/n): ")
+            .strip()
+            .lower()
+        )
+        if confirm == "y":
+            end_session()
+            valid_input = True
+        elif confirm == "n":
+            end_session_requested = False
+            valid_input = True
+        else:
+            print("Please type either 'y' or 'n'.")
+
+
+def signal_handler(sig, frame):
+    confirm_end_session()
+
+
 def main():
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     parser = argparse.ArgumentParser(
         description="Block websites during this study session of a specified time period."
     )
