@@ -21,6 +21,7 @@ SESSION_TRACKER_FILE = "session_tracker.json"
 NO_SITES_STR = "No sites entered to block."
 DEFAULT_SITES_FILE = "default_sites.txt"
 COLLECTED_SESSIONS_DIR = "collected_sessions"
+POSSIBLE_DIVIDERS = ["\u2022", ">", "-"]
 
 # UPDATE THIS DEPENDING ON THE QUESTIONS YOU WANT TO ANSWER
 POST_SESSION_RECAP_QS = [
@@ -300,27 +301,95 @@ def format_timedelta(td):
         return f"{int(minutes)} minutes"
 
 
+def sum_durations(durations):
+    total_minutes = 0
+    for duration in durations:
+        if "hours" in duration and "minutes" in duration:
+            hours, minutes = map(int, re.findall(r"\d+", duration))
+            total_minutes += (hours * 60) + minutes
+        elif "minutes" in duration:
+            minutes = int(re.findall(r"\d+", duration)[0])
+            total_minutes += minutes
+    hours, minutes = divmod(total_minutes, 60)
+    if hours > 0:
+        return f"{hours} hours, {minutes} minutes"
+
+
+def detect_divider(text):
+    for divider in POSSIBLE_DIVIDERS:
+        if any(line.strip().startswith(divider) for line in text.split("\n")):
+            return divider
+    return None
+
+
+def has_divider(text):
+    return any(text.strip().startswith(d) for d in POSSIBLE_DIVIDERS)
+
+
+def replace_or_add_divider(text, new_divider):
+    if has_divider(text):
+        for divider in POSSIBLE_DIVIDERS:
+            if text.strip().startswith(divider):
+                return re.sub(f"^{re.escape(divider)}\\s*", f"{new_divider} ", text)
+    return f"{new_divider} {text.strip()}"
+
+
 def collect_notes(start_session, end_session):
+    used_dividers = set()
+    combined_content = [(q, []) for q in POST_SESSION_RECAP_QS]
+    session_durations = []
+
     if not os.path.exists(COLLECTED_SESSIONS_DIR):
         os.makedirs(COLLECTED_SESSIONS_DIR)
 
-    combined_content = {}
-    session_durations = []
-
-    for session_num in range(start_session, end_session + 1):
-        filename = f"session_{session_num:02}.md"
-        filepath = os.path.join(NOTES_DIR, filename)
+    for note_num in range(start_session, end_session + 1):
+        filename = f"session_{note_num:02}.md"
+        filepath = os.path.join("session_notes", filename)
 
         if not os.path.exists(filepath):
             print(
-                f"Warning: Session {session_num} not found in the {NOTES_DIR} directory. Skipping."
+                f"Warning: Session {note_num} not found in the {NOTES_DIR} directory. Skipping."
             )
             continue
 
         with open(filepath, "r") as f:
             content = f.read()
+        duration_match = re.search(r"\*\*Session \d+ - (.+)\*\*", content)
+        if duration_match:
+            session_durations.append(duration_match.group(1))
+        for i, (question, answers) in enumerate(combined_content):
+            pattern = f"\\*\\*{re.escape(question)}\\*\\*\n(.*?)(?=\\*\\*|$)"
+            matches = re.findall(pattern, content, re.DOTALL)
+            if matches:
+                if divider := detect_divider(matches[0]):
+                    used_dividers.add(divider)
+                if match_arr := matches[0].strip().split("\n"):
+                    filtered_matches = [m.strip() for m in match_arr if m.strip()]
+                    if filtered_matches:
+                        combined_content[i] = (question, answers + filtered_matches)
 
-         tn
+    combined_filename = f"combined_sessions_{start_session:02}_to_{end_session:02}.md"
+    combined_filepath = os.path.join(COLLECTED_SESSIONS_DIR, combined_filename)
+
+    final_divider = (
+        max(used_dividers, key=list(used_dividers).count) if used_dividers else "\u2022"
+    )
+
+    with open(combined_filepath, "w") as combined_file:
+        combined_file.write(
+            f"**Combined Sessions {start_session} to {end_session}**\n\n"
+        )
+        combined_file.write(f"Total duration: {sum_durations(session_durations)}\n\n")
+        for question, answers in combined_content:
+            combined_file.write(f"**{question}**\n")
+            for answer in answers:
+                formatted_answer = replace_or_add_divider(answer, final_divider)
+                combined_file.write(f"{formatted_answer}\n")
+            combined_file.write("\n")
+
+    print(f"Combined notes saved to: {combined_filepath}")
+    subprocess.run(f"echo '{combined_filepath}' | pbcopy", shell=True)
+    print("File path copied to clipboard!")
 
 
 # Q: assume that the --sites makes it optional?
