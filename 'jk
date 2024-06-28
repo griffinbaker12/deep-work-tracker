@@ -108,7 +108,9 @@ def prompt_user(start_time):
         data = json.load(tracker_file)
         session_number = data["session_number"]
 
-    session_end_str = "Work session ended, answer these questions to recap how it went!"
+    session_end_str = (
+        "Study session ended, answer these questions to recap how it went!"
+    )
     # print("\n")
     print_underline(f"{session_end_str}", with_str=False)
     print_underline(session_end_str)
@@ -124,6 +126,7 @@ def prompt_user(start_time):
         session_start_time = start_time
         session_end_time = datetime.now()
         session_duration_str = format_timedelta(session_end_time - session_start_time)
+        print(session_duration_str)
         note_file.write(f"**Session {session_number} - {session_duration_str}**\n\n")
 
         for q, a in answers.items():
@@ -134,7 +137,6 @@ def prompt_user(start_time):
         json.dump(data, tracker_file)
 
     subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
-    print(f"⭐️ Congrats on working for {session_duration_str} ⭐️")
     print(
         f"Your answers have been saved to {note_file_path}. The file path has also been copied to your clipboard!"
     )
@@ -249,7 +251,7 @@ def main():
     )
     parser.add_argument(
         "action",
-        choices=["start", "end"],
+        choices=["start", "info", "end"],
         help="Action to perform: 'start' a new session, get 'info' about the current session, or 'end' the current session.",
     )
     # Q: assume that the --sites makes it optional?

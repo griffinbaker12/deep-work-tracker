@@ -96,7 +96,7 @@ def remove_sites():
     reset_dns(f"\nRemoved blocked sites: {", ".join(blocked_sites)}.")
 
 
-def prompt_user(start_time):
+def prompt_user():
     if not os.path.exists(NOTES_DIR):
         os.makedirs(NOTES_DIR)
 
@@ -108,7 +108,9 @@ def prompt_user(start_time):
         data = json.load(tracker_file)
         session_number = data["session_number"]
 
-    session_end_str = "Work session ended, answer these questions to recap how it went!"
+    session_end_str = (
+        "Study session ended, answer these questions to recap how it went!"
+    )
     # print("\n")
     print_underline(f"{session_end_str}", with_str=False)
     print_underline(session_end_str)
@@ -121,11 +123,9 @@ def prompt_user(start_time):
 
     note_file_path = os.path.join(NOTES_DIR, f"session_{session_number:02}.md")
     with open(note_file_path, "w") as note_file:
-        session_start_time = start_time
-        session_end_time = datetime.now()
-        session_duration_str = format_timedelta(session_end_time - session_start_time)
-        note_file.write(f"**Session {session_number} - {session_duration_str}**\n\n")
-
+        note_file.write(
+            f"**Session {session_number} - {datetime.now().strftime(TIME_FORMAT)}**\n\n"
+        )
         for q, a in answers.items():
             note_file.write(f"**{q}**\n{a}\n\n")
 
@@ -134,7 +134,6 @@ def prompt_user(start_time):
         json.dump(data, tracker_file)
 
     subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
-    print(f"⭐️ Congrats on working for {session_duration_str} ⭐️")
     print(
         f"Your answers have been saved to {note_file_path}. The file path has also been copied to your clipboard!"
     )
@@ -151,7 +150,7 @@ def start_session(sites, duration):
 
         with open(SESSION_INFO_FILE, "w") as session_file:
             session_file.write(
-                f"Session number {session_number}\nStart time:{start_time.strftime(TIME_FORMAT)}\nEnd time:{end_time.strftime(TIME_FORMAT)}\n"
+                f"Deep work session {session_number} started at {start_time.strftime(TIME_FORMAT)}, session to end at {end_time.strftime(TIME_FORMAT)}\n"
             )
             session_file.write("\n".join(sites))
 
@@ -176,33 +175,11 @@ def start_session(sites, duration):
                 end_session()
 
 
-def remove_old_info_file_and_get_start_time():
-    start_time = None
-    if os.path.exists(SESSION_INFO_FILE):
-        with open(SESSION_INFO_FILE, "r") as f:
-            for line in f:
-                if line.startswith("Start time:"):
-                    start_time_str = line.split("Start time:")[1].strip()
-                    start_time = datetime.strptime(start_time_str, TIME_FORMAT)
-                    break
-        os.remove(SESSION_INFO_FILE)
-    return start_time
-
-
 def end_session():
     remove_sites()
-
-    start_time = None
     if os.path.exists(SESSION_INFO_FILE):
-        # save the old start time to get full duration
-        start_time = remove_old_info_file_and_get_start_time()
-
-    if start_time:
-        prompt_user(start_time)
-    else:
-        print("Error parsing the session info file.")
-        sys.exit(1)
-
+        os.remove(SESSION_INFO_FILE)
+    prompt_user()
     sys.exit(0)
 
 
@@ -249,7 +226,7 @@ def main():
     )
     parser.add_argument(
         "action",
-        choices=["start", "end"],
+        choices=["start", "info", "end"],
         help="Action to perform: 'start' a new session, get 'info' about the current session, or 'end' the current session.",
     )
     # Q: assume that the --sites makes it optional?
@@ -271,10 +248,10 @@ def main():
             sys.exit(1)
         sites = args.sites.split(",")
         start_session(sites, args.duration)
+    elif args.action == "info":
+        print("*** need to implement ***")
     elif args.action == "end":
         end_session()
-    else:
-        print("Please enter a valid action: start, end.")
 
 
 if __name__ == "__main__":
