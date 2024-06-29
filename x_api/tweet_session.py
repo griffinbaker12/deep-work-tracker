@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 from textwrap import wrap
@@ -19,12 +20,20 @@ TWEET_CHAR_LIMIT = 280
 
 
 def read_session_note(filename):
-    with open(os.path.join(NOTES_DIR, filename), "r") as f:
+    with open(filename) as f:
         return f.read()
 
 
+def clean_markdown(text):
+    text = re.sub(r"\*\*", "", text)
+    return text
+
+
 def split_into_tweets(text):
-    return wrap(text, TWEET_CHAR_LIMIT, replace_whitespace=False, drop_whitespace=False)
+    cleaned_text = clean_markdown(text)
+    return wrap(
+        cleaned_text, TWEET_CHAR_LIMIT, replace_whitespace=False, drop_whitespace=False
+    )
 
 
 def create_oauth_session():
@@ -100,29 +109,65 @@ def post_thread(oauth, tweets):
         payload = {"text": tweet}
         response = post_tweet(oauth, payload, previous_tweet_id)
         previous_tweet_id = response["data"]["id"]
-        print(f"Posted tweet {i}, it had a length of {len(tweet)}")
-    print(f"Thread posted successfully! It was {len(tweets)} posts long.")
+        print(f"Posted tweet {i} of length {len(tweet)}")
+    print(
+        f"Thread posted successfully! It was {len(tweets)} post{"s" if len(tweets) > 1 else ""} long."
+    )
+
+
+def select_directory():
+    while True:
+        choice = input(
+            "Select source directory:\n1. Collected Sessions\n2. Session Notes\nEnter 1 or 2: "
+        ).strip()
+        if choice == "1":
+            return COLLECTED_SESSIONS_DIR, "collected session"
+        elif choice == "2":
+            return NOTES_DIR, "session note"
+        else:
+            print("Invalid choice. Please enter 1 or 2.")
 
 
 def main():
     oauth = create_oauth_session()
 
-    # List available session notes
-    session_files = [f for f in os.listdir(NOTES_DIR) if f.endswith(".md")]
-    for i, file in enumerate(session_files):
+    selected_dir, file_type = select_directory()
+
+    if not os.path.exists(selected_dir):
+        err_str = "Error: {selected_dir} does not exist. "
+        if file_type == "collected session":
+            err_str += "Run 'sudo python3 main.py collect' command to collect multiple notes into one note before trying this command again."
+        else:
+            err_str += "Run 'sudo python3 main.py start...' to create a session that you can then upload to X."
+        print(err_str)
+        exit(1)
+
+    files = [f for f in os.listdir(selected_dir) if f.endswith(".md")]
+    if not files:
+        print(f"No markdown files found in the {file_type} directory.")
+        exit(1)
+
+    for i, file in enumerate(files):
         print(f"{i+1}. {file}")
 
-    # Select a session note
-    selection = int(input("Select a session note to upload (enter number): ")) - 1
-    selected_file = session_files[selection]
+    while True:
+        try:
+            selection = (
+                int(input(f"Select a {file_type} to upload (enter number): ")) - 1
+            )
+            if 0 <= selection < len(files):
+                selected_file = files[selection]
+                break
+            else:
+                print("Invalid selection. Please try again.")
+        except ValueError:
+            print("Please enter a number.")
 
-    # Read and split the note
-    note_content = read_session_note(selected_file)
+    print(selected_dir, selected_file)
+
+    note_content = read_session_note(os.path.join(selected_dir, selected_file))
     tweets = split_into_tweets(note_content)
 
-    print(tweets)
-
-    # Post the thread
     post_thread(oauth, tweets)
 
 
