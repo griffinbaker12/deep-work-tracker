@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 import sys
 import time
 from textwrap import wrap
@@ -7,9 +8,10 @@ from textwrap import wrap
 import dotenv
 from requests_oauthlib import OAuth1Session
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from constants import COLLECTED_SESSIONS_DIR, NOTES_DIR
 
-from main import COLLECTED_SESSIONS_DIR, NOTES_DIR
+if __name__ == "__main__":
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 dotenv.load_dotenv()
 
@@ -56,7 +58,11 @@ def create_oauth_session():
     # Get authorization
     base_authorization_url = "https://api.twitter.com/oauth/authorize"
     authorization_url = oauth.authorization_url(base_authorization_url)
-    print("Please go here and authorize: %s" % authorization_url)
+    subprocess.run(f"echo '{authorization_url}' | pbcopy", shell=True)
+    print(
+        "Please go here and authorize (it has been copied to your clipboard): %s"
+        % authorization_url
+    )
     verifier = input("Paste the PIN here: ")
 
     # Get the access token

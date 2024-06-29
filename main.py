@@ -8,27 +8,22 @@ import sys
 import time
 from datetime import datetime, timedelta
 
-HOSTS_PATH = "/etc/hosts"
-HEADER_BLOCK = "# Added by work script\n"
-FOOTER_BLOCK = "End of section\n"
-EM_DASH = "\u2014"
-SITE_PATTERN = r"(?:www\.)?([a-zA-Z0-9-]+)\.com"
-SESSION_INFO_FILE = "/tmp/site_blocker_session_info"
-TEST_FILE = "/tmp/exit_ran"
-TIME_FORMAT = "%m/%d/%y, %H:%M:%S"
-NOTES_DIR = "session_notes"
-SESSION_TRACKER_FILE = "session_tracker.json"
-NO_SITES_STR = "No sites entered to block."
-DEFAULT_SITES_FILE = "default_sites.txt"
-COLLECTED_SESSIONS_DIR = "collected_sessions"
-POSSIBLE_DIVIDERS = ["\u2022", ">", "-"]
-
-# UPDATE THIS DEPENDING ON THE QUESTIONS YOU WANT TO ANSWER
-POST_SESSION_RECAP_QS = [
-    "1) What did you learn / work on?",
-    "2) What went well?",
-    "3) What didn't go well?",
-]
+from constants import (
+    COLLECTED_SESSIONS_DIR,
+    DEFAULT_SITES_FILE,
+    FOOTER_BLOCK,
+    HEADER_BLOCK,
+    HOSTS_PATH,
+    NO_SITES_STR,
+    NOTES_DIR,
+    POSSIBLE_DIVIDERS,
+    POST_SESSION_RECAP_QS,
+    SESSION_INFO_FILE,
+    SESSION_TRACKER_FILE,
+    SITE_PATTERN,
+    TIME_FORMAT,
+)
+from x_api.tweet_session import main as tweet_main
 
 end_session_requested = False
 is_handling_signal = False
@@ -521,8 +516,8 @@ def main():
     )
     parser.add_argument(
         "action",
-        choices=["start", "end", "collect"],
-        help="Actions to perform: 'start' a new session, 'end' the current session, or 'collect' to group multiple sessions into one note.",
+        choices=["start", "end", "collect", "tweet"],
+        help="Actions to perform: 'start' a new session, 'end' the current session, 'collect' to group multiple sessions into one note, or 'tweet' to post session notes to X.",
     )
     parser.add_argument(
         "--sites",
@@ -588,8 +583,9 @@ def main():
 
         if args.divider and args.divider != read_default_divider():
             set_default_divider(args.divider)
-
         collect_notes(args.collect_from, args.to, args.divider)
+    elif args.action == "tweet":
+        tweet_main()
     else:
         print("Please enter a valid action: start, end.")
 
