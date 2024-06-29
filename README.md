@@ -1,3 +1,4 @@
-# Setting up 'at' command
-- To make sure that the `at` command is enabled on your system, refer to this link: https://stackoverflow.com/questions/10467031/at-command-is-not-executed.
-- You can change the ar
+# Uploading notes to X
+- If you want to easily upload your session notes to X, you must create a free developer account.
+- You must run `pip install -r requirements.txt`.
+- I recommend, and I think you will find it easiest, to run this script after collecting multiple sessions into one note via the 'collect' cli command (but that is up to you).
