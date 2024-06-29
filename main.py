@@ -31,6 +31,7 @@ POST_SESSION_RECAP_QS = [
 ]
 
 end_session_requested = False
+is_handling_signal = False
 
 
 def reset_dns(success_str):
@@ -94,6 +95,27 @@ def prompt_for_divider():
         if divider in POSSIBLE_DIVIDERS:
             return divider
         print(f"Invalid divider. Please choose from {POSSIBLE_DIVIDERS}")
+
+
+def get_session_number():
+    if os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "r") as f:
+            data = json.load(f)
+            return data.get("session_number", 1)
+    return 1
+
+
+def increment_session_number():
+    if os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "r") as f:
+            data = json.load(f)
+    else:
+        data = {"session_number": 1}
+
+    data["session_number"] = data.get("session_number", 1) + 1
+
+    with open(SESSION_TRACKER_FILE, "w") as f:
+        json.dump(data, f)
 
 
 def block_sites(sites, all_sites=False):
@@ -170,13 +192,7 @@ def prompt_user(start_time, cli_divider=None):
     if not os.path.exists(NOTES_DIR):
         os.makedirs(NOTES_DIR)
 
-    if not os.path.exists(SESSION_TRACKER_FILE):
-        with open(SESSION_TRACKER_FILE, "w") as tracker_file:
-            json.dump({"session_number": 1}, tracker_file)
-
-    with open(SESSION_TRACKER_FILE, "r") as tracker_file:
-        data = json.load(tracker_file)
-        session_number = data["session_number"]
+    session_number = get_session_number()
 
     session_end_str = "Work session ended, answer these questions to recap how it went!"
     print_underline(f"{session_end_str}", with_str=False)
@@ -189,14 +205,14 @@ def prompt_user(start_time, cli_divider=None):
         print(f"Using divider provided via CLI: '{divider}' .")
     elif default_divider:
         divider = default_divider
-        print(f"Using default divider: '{divider}' ")
+        print(f"Using default divider: '{divider}'.")
         print(
             "You can change this with the '--divider' argument or by editing the 'session_tracker.json' file."
         )
     else:
         divider = prompt_for_divider()
         set_default_divider(divider)
-        print(f"Default divider set to: '{divider}' ")
+        print(f"Default divider set to: '{divider}'.")
         print(
             "You can change this in the future with the '--divider' argument or by editing the 'session_tracker.json' file."
         )
@@ -219,9 +235,7 @@ def prompt_user(start_time, cli_divider=None):
         for q, a in answers.items():
             note_file.write(f"**{q}**\n{a}\n\n")
 
-    data["session_number"] += 1
-    with open(SESSION_TRACKER_FILE, "w") as tracker_file:
-        json.dump(data, tracker_file)
+    increment_session_number()
 
     subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
     print(f"⭐️ Congrats on working for {session_duration_str} ⭐️")
@@ -235,9 +249,7 @@ def start_session(sites, duration, continuous, all_sites):
         start_time = datetime.now()
         end_time = start_time + timedelta(minutes=duration)
 
-        with open(SESSION_TRACKER_FILE, "r") as tracker_file:
-            data = json.load(tracker_file)
-            session_number = data["session_number"]
+        session_number = get_session_number()
 
         with open(SESSION_INFO_FILE, "w") as session_file:
             session_str = f"Session number {session_number}\nStart time:{start_time.strftime(TIME_FORMAT)}\n"
@@ -273,7 +285,7 @@ def start_session(sites, duration, continuous, all_sites):
             else:
                 time.sleep(duration * 60)
         except KeyboardInterrupt:
-            confirm_end_session()
+            pass
         finally:
             if not end_session_requested:
                 end_session()
@@ -301,16 +313,15 @@ def end_session(cli_divider=None):
         start_time = remove_old_info_file_and_get_start_time()
 
     if start_time:
-        prompt_user(
-            start_time,
-            cli_divider,
-        )
+        try:
+            prompt_user(start_time, cli_divider)
+        except KeyboardInterrupt:
+            print("\nSkipping session recap due to interruption.")
     else:
         if not exists:
             print(f"There must be an active session at {SESSION_INFO_FILE} to end one.")
         else:
             print("Error parsing the session info file.")
-        sys.exit(1)
 
     sys.exit(0)
 
@@ -318,26 +329,46 @@ def end_session(cli_divider=None):
 def confirm_end_session():
     global end_session_requested
     end_session_requested = True
-    valid_input = False
 
-    while not valid_input:
-        confirm = (
-            input("\nAre you sure you want to end the study session? (y/n): ")
-            .strip()
-            .lower()
-        )
-        if confirm == "y":
-            end_session()
-            valid_input = True
-        elif confirm == "n":
-            end_session_requested = False
-            valid_input = True
-        else:
-            print("Please type either 'y' or 'n'.")
+    try:
+        while True:
+            confirm = (
+                input("\nAre you sure you want to end the study session? (y/n): ")
+                .strip()
+                .lower()
+            )
+            if confirm == "y":
+                end_session()
+                break
+            elif confirm == "n":
+                end_session_requested = False
+                break
+            else:
+                print("Please type either 'y' or 'n'.")
+    except KeyboardInterrupt:
+        print("\nForced exit. Cleaning up...")
+        cleanup_and_exit()
+
+
+def cleanup_and_exit():
+    remove_sites()
+    print("Session ended abruptly. Site blocking has been removed.")
+    if os.path.exists(SESSION_INFO_FILE):
+        os.remove(SESSION_INFO_FILE)
+    sys.exit(1)
 
 
 def signal_handler(sig, frame):
-    confirm_end_session()
+    global end_session_requested, is_handling_signal
+    if is_handling_signal:
+        print("\nForced exit. Cleaning up...")
+        cleanup_and_exit()
+
+    is_handling_signal = True
+    try:
+        confirm_end_session()
+    finally:
+        is_handling_signal = False
 
 
 def format_timedelta(td):
