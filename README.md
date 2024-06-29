@@ -69,7 +69,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [ ] Add a GUI / web interface for easier interaction.
 - [ ] Implement a database for storing session data.
 - [ ] Add a Pomodoro timer.
-- [ ] Integrate LLM to analyze session notes and provide pointers.
+- [ ] Integrate a LLM to analyze session notes and provide pointers.
+- [ ] Data visualization for session statistics.
 
 ## License
 [MIT License](LICENSE)
