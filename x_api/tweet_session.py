@@ -109,7 +109,8 @@ def post_thread(oauth, tweets):
         payload = {"text": tweet}
         response = post_tweet(oauth, payload, previous_tweet_id)
         previous_tweet_id = response["data"]["id"]
-        print(f"Posted tweet {i} of length {len(tweet)}")
+        print(f"Posted tweet {i+1}.")
+        print(tweet)
     print(
         f"Thread posted successfully! It was {len(tweets)} post{"s" if len(tweets) > 1 else ""} long."
     )
@@ -126,6 +127,29 @@ def select_directory():
             return NOTES_DIR, "session note"
         else:
             print("Invalid choice. Please enter 1 or 2.")
+
+
+def display_tweet_preview(tweets):
+    print()
+    print("=" * 40)
+    print("Thread Preview:")
+    print("=" * 40)
+    for i, tweet in enumerate(tweets, 1):
+        print(f"Post {i}")
+        print("-" * 40)
+        print(tweet.strip())
+        print("-" * 40)
+
+
+def confirm_post():
+    while True:
+        response = input("Do you want to post this thread? (y/n): ").strip().lower()
+        if response == "y":
+            return True
+        elif response == "n":
+            return False
+        else:
+            print("Please enter 'y' for yes or 'n' for no.")
 
 
 def main():
@@ -163,12 +187,15 @@ def main():
         except ValueError:
             print("Please enter a number.")
 
-    print(selected_dir, selected_file)
-
     note_content = read_session_note(os.path.join(selected_dir, selected_file))
     tweets = split_into_tweets(note_content)
 
-    post_thread(oauth, tweets)
+    display_tweet_preview(tweets)
+
+    if confirm_post():
+        post_thread(oauth, tweets)
+    else:
+        print("Thread posting cancelled.")
 
 
 if __name__ == "__main__":

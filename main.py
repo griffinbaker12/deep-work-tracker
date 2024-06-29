@@ -415,6 +415,21 @@ def replace_or_add_divider(text, new_divider):
     return f"{new_divider} {text.strip()}"
 
 
+def get_and_increment_day_number():
+    if os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "r") as f:
+            data = json.load(f)
+    else:
+        data = {"session_number": 1, "day_number": 0}
+
+    data["day_number"] = data.get("day_number", 0) + 1
+
+    with open(SESSION_TRACKER_FILE, "w") as f:
+        json.dump(data, f)
+
+    return data["day_number"]
+
+
 def collect_notes(start_session, end_session, cli_divider=None):
     if not os.path.exists(NOTES_DIR):
         print(
@@ -476,14 +491,14 @@ def collect_notes(start_session, end_session, cli_divider=None):
                     if filtered_matches:
                         combined_content[i] = (question, answers + filtered_matches)
 
-    combined_filename = f"combined_sessions_{start_session:02}_to_{end_session:02}.md"
+    day_number = get_and_increment_day_number()
+    combined_filename = (
+        f"day_{day_number:02}_sessions_{start_session:02d}_to_{end_session:02d}.md"
+    )
     combined_filepath = os.path.join(COLLECTED_SESSIONS_DIR, combined_filename)
 
     with open(combined_filepath, "w") as combined_file:
-        combined_file.write(
-            f"**Combined Sessions {start_session} to {end_session}**\n\n"
-        )
-        print(session_durations)
+        combined_file.write(f"**Day {day_number}**\n\n")
         combined_file.write(f"Total duration: {sum_durations(session_durations)}\n\n")
         for question, answers in combined_content:
             combined_file.write(f"**{question}**\n")
@@ -495,9 +510,6 @@ def collect_notes(start_session, end_session, cli_divider=None):
     print(f"Combined notes saved to: {combined_filepath}")
     subprocess.run(f"echo '{combined_filepath}' | pbcopy", shell=True)
     print("File path copied to clipboard!")
-
-
-# Q: assume that the --sites makes it optional?
 
 
 def main():
