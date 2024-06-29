@@ -63,6 +63,39 @@ def read_default_sites():
     return [""]
 
 
+def read_default_divider():
+    if os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "r") as f:
+            data = json.load(f)
+            return data.get("default_divider")
+    return None
+
+
+def set_default_divider(divider):
+    if os.path.exists(SESSION_TRACKER_FILE):
+        with open(SESSION_TRACKER_FILE, "r") as f:
+            data = json.load(f)
+    else:
+        data = {"session_number": 1}
+
+    data["default_divider"] = divider
+
+    with open(SESSION_TRACKER_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def prompt_for_divider():
+    while True:
+        divider = input(
+            f"Choose your preferred line starter {POSSIBLE_DIVIDERS}. Press Enter for default '{POSSIBLE_DIVIDERS[0]}' : "
+        ).strip()
+        if not divider:
+            return POSSIBLE_DIVIDERS[0]
+        if divider in POSSIBLE_DIVIDERS:
+            return divider
+        print(f"Invalid divider. Please choose from {POSSIBLE_DIVIDERS}")
+
+
 def block_sites(sites, all_sites=False):
     if not already_a_session():
         if all_sites:
@@ -133,7 +166,7 @@ def get_multi_line_input(prompt, divider):
 # the script...
 
 
-def prompt_user(start_time):
+def prompt_user(start_time, cli_divider=None):
     if not os.path.exists(NOTES_DIR):
         os.makedirs(NOTES_DIR)
 
@@ -149,17 +182,26 @@ def prompt_user(start_time):
     print_underline(f"{session_end_str}", with_str=False)
     print_underline(session_end_str)
 
-    answers = {}
+    default_divider = read_default_divider()
 
-    divider = input(
-        "Choose your preferred line starter (\u2022, '>', '-'). Press Enter for default '\u2022' :\n"
-    ).strip()
-    if divider not in [
-        "\u2022",
-        ">",
-        "-",
-    ]:
-        divider = "\u2022"
+    if cli_divider:
+        divider = cli_divider
+        print(f"Using divider provided via CLI: '{divider}' .")
+    elif default_divider:
+        divider = default_divider
+        print(f"Using default divider: '{divider}' ")
+        print(
+            "You can change this with the '--divider' argument or by editing the 'session_tracker.json' file."
+        )
+    else:
+        divider = prompt_for_divider()
+        set_default_divider(divider)
+        print(f"Default divider set to: '{divider}' ")
+        print(
+            "You can change this in the future with the '--divider' argument or by editing the 'session_tracker.json' file."
+        )
+
+    answers = {}
 
     print()
     for q in POST_SESSION_RECAP_QS:
@@ -184,7 +226,7 @@ def prompt_user(start_time):
     subprocess.run(f"echo '{note_file_path}' | pbcopy", shell=True)
     print(f"⭐️ Congrats on working for {session_duration_str} ⭐️")
     print(
-        f"\nYour answers have been saved to {note_file_path}. The file path has also been copied to your clipboard!"
+        f"\nYour answers have been saved to {note_file_path}.\nThe file path has also been copied to your clipboard!"
     )
 
 
@@ -250,18 +292,24 @@ def remove_old_info_file_and_get_start_time():
     return start_time
 
 
-def end_session():
+def end_session(cli_divider=None):
     remove_sites()
 
     start_time = None
-    if os.path.exists(SESSION_INFO_FILE):
+    if exists := os.path.exists(SESSION_INFO_FILE):
         # save the old start time to get full duration
         start_time = remove_old_info_file_and_get_start_time()
 
     if start_time:
-        prompt_user(start_time)
+        prompt_user(
+            start_time,
+            cli_divider,
+        )
     else:
-        print("Error parsing the session info file.")
+        if not exists:
+            print(f"There must be an active session at {SESSION_INFO_FILE} to end one.")
+        else:
+            print("Error parsing the session info file.")
         sys.exit(1)
 
     sys.exit(0)
@@ -313,6 +361,8 @@ def sum_durations(durations):
     hours, minutes = divmod(total_minutes, 60)
     if hours > 0:
         return f"{hours} hours, {minutes} minutes"
+    else:
+        return f"{minutes} minutes"
 
 
 def detect_divider(text):
@@ -334,7 +384,34 @@ def replace_or_add_divider(text, new_divider):
     return f"{new_divider} {text.strip()}"
 
 
-def collect_notes(start_session, end_session):
+def collect_notes(start_session, end_session, cli_divider=None):
+    if not os.path.exists(NOTES_DIR):
+        print(
+            f"Error: No session notes found in {NOTES_DIR}. Please run a session first."
+        )
+        sys.exit(1)
+
+    session_files = [
+        f
+        for f in os.listdir(NOTES_DIR)
+        if f.startswith("session_") and f.endswith(".md")
+    ]
+    if not session_files:
+        print(
+            f"Error: No session notes found in {NOTES_DIR}. Please run a session first."
+        )
+        sys.exit(1)
+
+    default_divider = read_default_divider()
+
+    if cli_divider:
+        final_divider = cli_divider
+    elif default_divider:
+        final_divider = default_divider
+    else:
+        final_divider = prompt_for_divider()
+        set_default_divider(final_divider)
+
     used_dividers = set()
     combined_content = [(q, []) for q in POST_SESSION_RECAP_QS]
     session_durations = []
@@ -371,14 +448,11 @@ def collect_notes(start_session, end_session):
     combined_filename = f"combined_sessions_{start_session:02}_to_{end_session:02}.md"
     combined_filepath = os.path.join(COLLECTED_SESSIONS_DIR, combined_filename)
 
-    final_divider = (
-        max(used_dividers, key=list(used_dividers).count) if used_dividers else "\u2022"
-    )
-
     with open(combined_filepath, "w") as combined_file:
         combined_file.write(
             f"**Combined Sessions {start_session} to {end_session}**\n\n"
         )
+        print(session_durations)
         combined_file.write(f"Total duration: {sum_durations(session_durations)}\n\n")
         for question, answers in combined_content:
             combined_file.write(f"**{question}**\n")
@@ -440,6 +514,11 @@ def main():
         "--to",
         type=int,
     )
+    parser.add_argument(
+        "--divider",
+        choices=POSSIBLE_DIVIDERS,
+        help="Set the divider for the collect action. Also sets as new default if different from current default.",
+    )
     args = parser.parse_args()
 
     if args.action == "start":
@@ -456,13 +535,18 @@ def main():
             args.all_sites,
         )
     elif args.action == "end":
-        end_session()
-    elif args.actions == "collect":
+        end_session(args.divider)
+    elif args.action == "collect":
         if not args.collect_from and not args.to:
             print(
-                "Error: Must pass which session notes to collect into one daily note."
+                "Error: Must pass which session notes to collect into one daily note. The relevant args are: 'collect_from' and 'to')."
             )
-        collect_notes(args.collect_from, args.to)
+            sys.exit(1)
+
+        if args.divider and args.divider != read_default_divider():
+            set_default_divider(args.divider)
+
+        collect_notes(args.collect_from, args.to, args.divider)
     else:
         print("Please enter a valid action: start, end.")
 

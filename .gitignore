@@ -1,3 +1,5 @@
 tests/
 session_notes/
 session_tracker.json
+default_sites.txt
+collected_sessions/
