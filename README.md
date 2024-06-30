@@ -1,4 +1,4 @@
-# Study Session Manager
+# Deep Work Tracker
 
 ## Overview
 The Study Session Manager is a comprehensive tool designed to enhance productivity during study or work sessions. It combines website blocking, session tracking, note-taking, and optional Twitter integration for sharing session summaries.
