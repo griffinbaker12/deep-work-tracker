@@ -532,16 +532,13 @@ def main():
     )
     parser.add_argument(
         "--continuous",
-        type=bool,
-        help="Instead of entering a duration, the script will continue until you explicitly end it.",
-        default=False,
+        action="store_true",
+        help="If set, the script will continue until you explicitly end it.",
     )
     parser.add_argument(
         "--all-sites",
-        type=bool,
-        dest="all_sites",
-        help="If true, will not block any sites regardless of your default_sites.txt or the arg(s) passed to --sites parameter.",
-        default=False,
+        action="store_true",
+        help="If set, will not block any sites regardless of your default_sites.txt or the arg(s) passed to --sites parameter.",
     )
     parser.add_argument(
         "--collect-from",
