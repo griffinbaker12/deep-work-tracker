@@ -61,6 +61,7 @@ Here are the settings I used to enable my application to work properly:
 ![Api keys](https://github.com/griffinbaker12/deep-work-tracker/assets/96966609/68505781-c0a8-4977-b562-ece4e5c5d6ea)
 
 3. Obtain your API keys and tokens. Somewhat confusingly, the relevant keys here are the ```API Key and Secret```, not the ones contained within the ```OAuth 2.0``` section:
+
 ![User auth settings](https://github.com/griffinbaker12/deep-work-tracker/assets/96966609/8cc4ae95-95ab-4d73-84ff-bced4532235a)
 
 4. Create a `.env` file in the project root with your Twitter credentials:
@@ -68,7 +69,7 @@ Here are the settings I used to enable my application to work properly:
    X_CLIENT_ID=your_client_id
    X_CLIENT_SECRET=your_client_secret
    ```
-- Note that I kept the names as is to conform to the examples that X has posted on their [GitHub] (https://github.com/xdevplatform/Twitter-API-v2-sample-code) which contains other relevant examples.
+- Note that I kept the names as is to conform with the examples that X has posted on their [GitHub] (https://github.com/xdevplatform/Twitter-API-v2-sample-code) which contains other relevant examples.
 
 ## Configuration
 - Edit `constants.py` to customize file paths, prompts, and other settings.
