@@ -69,7 +69,7 @@ Here are the settings I used to enable my application to work properly:
    X_CLIENT_ID=your_client_id
    X_CLIENT_SECRET=your_client_secret
    ```
-- Note that I kept the names as is to conform with the examples that X has posted on their [GitHub] (https://github.com/xdevplatform/Twitter-API-v2-sample-code) which contains other relevant examples.
+- Note that I kept the names as is to conform with the examples that X has posted on their [GitHub](https://github.com/xdevplatform/Twitter-API-v2-sample-code) which contains other relevant examples.
 
 ## Configuration
 - Edit `constants.py` to customize file paths, prompts, and other settings.
