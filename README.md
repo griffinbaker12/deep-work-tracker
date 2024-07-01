@@ -52,9 +52,12 @@ This allows you to select a session or collection to tweet.
 To use the Twitter integration:
 1. Create a developer account and project at [Twitter Developer Portal](https://developer.twitter.com/).
 
-2. Setup the user authentication settings for your app, which you can find on the ```Settings``` page of your application.
+2. Edit the user authentication settings for your app, which you can find on the ```Settings``` page of your application.
+
 ![User auth setup](https://github.com/griffinbaker12/deep-work-tracker/assets/96966609/e746b3cc-772c-4eba-be82-62257fb4468d)
+
 Here are the settings I used to enable my application to work properly:
+
 ![Api keys](https://github.com/griffinbaker12/deep-work-tracker/assets/96966609/68505781-c0a8-4977-b562-ece4e5c5d6ea)
 
 3. Obtain your API keys and tokens. Somewhat confusingly, the relevant keys here are the ```API Key and Secret```, not the ones contained within the ```OAuth 2.0``` section:
